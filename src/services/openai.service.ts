@@ -1,135 +1,163 @@
-import { useSettingsStore } from '../stores/settings.store';
-import type { AdozioneEstesa } from '../types/adozione.types';
+// src/services/openai.service.ts
+import OpenAI from 'openai';
+import { AdozioneData, CLASSI_LAUREA, TestoAdottato } from '../types/adozione.types';
 
-export class OpenAIService {
-  private apiKey: string;
-  private model: string;
+let openaiClient: OpenAI | null = null;
 
-  constructor() {
-    const settings = useSettingsStore.getState();
-    this.apiKey = settings.apiKey;
-    this.model = settings.model;
+export function initializeOpenAI(apiKey: string): void {
+  openaiClient = new OpenAI({
+    apiKey,
+    dangerouslyAllowBrowser: true
+  });
+}
 
-    console.log('OpenAIService inizializzato');
-    console.log('API Key presente:', !!this.apiKey);
-    console.log('Modello:', this.model);
+export function isOpenAIInitialized(): boolean {
+  return openaiClient !== null;
+}
 
-    if (!this.apiKey) {
-      throw new Error('API Key OpenAI non configurata. Vai in Impostazioni per configurarla.');
+function buildEnhancedPrompt(pdfText: string): string {
+  const classiInfo = CLASSI_LAUREA.map(c => 
+    `- ${c.codice}: ${c.nome} - ${c.descrizione}`
+  ).join('\n');
+
+  return `Sei un esperto analista di programmi didattici universitari per la casa editrice Zanichelli.
+
+CLASSI DI LAUREA MINISTERIALI DISPONIBILI:
+${classiInfo}
+
+COMPITO:
+Analizza il seguente programma didattico universitario ed estrai TUTTE le informazioni richieste con MASSIMA PRECISIONE.
+
+REGOLE CRITICHE PER L'ESTRAZIONE:
+
+1. MATERIA STANDARDIZZATA:
+   - Identifica la materia SPECIFICA, NON generica
+   - CORRETTO: "Chimica Organica", "Chimica Generale", "Chimica Fisica"
+   - ERRATO: "Chimica" (troppo generico)
+   - CORRETTO: "Biologia Molecolare", "Biologia Cellulare"
+   - ERRATO: "Biologia" (troppo generico)
+   - Usa la nomenclatura standard del settore scientifico-disciplinare
+
+2. CLASSE DI LAUREA:
+   - Identifica il codice esatto (es: L-13, LM-6)
+   - Se trovi il codice, usa la descrizione completa dalla lista sopra
+   - Se non trovi il codice ma riconosci il corso, deducilo dalla descrizione
+   - Esempio: "Scienze Biologiche triennale" → L-13
+
+3. TESTI ADOTTATI:
+   - Elenca TUTTI i testi nell'ORDINE in cui appaiono
+   - Il PRIMO testo della lista è SEMPRE il principale (isPrincipale: true)
+   - Distingui tra: principale, consigliato, riferimento
+   - Estrai ISBN quando disponibile
+
+4. DATI DOCENTE:
+   - Nome completo del docente
+   - Email se presente
+
+TESTO DEL PROGRAMMA:
+${pdfText}
+
+RISPOSTA RICHIESTA IN FORMATO JSON:
+{
+  "ateneo": "nome completo università",
+  "facolta": "nome facoltà",
+  "dipartimento": "nome dipartimento",
+  "corsoDiLaurea": "nome completo corso",
+  "classeLaurea": "codice (es: L-13)",
+  "classeLaureaDescrizione": "nome completo dalla lista",
+  "materiaStandardizzata": "nome SPECIFICO materia (es: Chimica Organica)",
+  "nomeInsegnamento": "nome esatto insegnamento dal programma",
+  "annoAccademico": "YYYY/YYYY",
+  "semestre": "1 o 2 o Annuale",
+  "cfu": numero,
+  "ssd": "codice settore (es: BIO/10)",
+  "docente": "Nome Cognome",
+  "emailDocente": "email se disponibile",
+  "testiAdottati": [
+    {
+      "titolo": "titolo completo",
+      "autori": ["Autore1", "Autore2"],
+      "editore": "nome editore",
+      "anno": anno,
+      "isbn": "codice isbn",
+      "edizione": "numero edizione",
+      "tipologia": "principale o consigliato o riferimento",
+      "isPrincipale": true per il PRIMO della lista,
+      "note": "eventuali note"
     }
+  ]
+}
+
+Rispondi SOLO con il JSON, senza testo aggiuntivo.`;
+}
+
+export async function analyzePDF(
+  pdfText: string,
+  fileName: string
+): Promise<AdozioneData> {
+  if (!openaiClient) {
+    throw new Error('OpenAI non inizializzato. Configura la API key nelle impostazioni.');
   }
 
-  async analyzeAdozioni(testoCompleto: string): Promise<AdozioneEstesa[]> {
-    console.log('Inizio analisi con OpenAI');
-    console.log('Lunghezza testo:', testoCompleto.length);
+  try {
+    const prompt = buildEnhancedPrompt(pdfText);
 
-    const prompt = `Analizza questo testo estratto da un programma universitario e estrai le seguenti informazioni in formato JSON:
-
-TESTO DA ANALIZZARE:
-${testoCompleto}
-
-Estrai e restituisci SOLO un array JSON con questa struttura (senza altri testi o spiegazioni):
-
-[
-  {
-    "ateneo": "nome dell'università",
-    "docente": "nome del docente",
-    "insegnamento": "nome dell'insegnamento/corso",
-    "corso": "nome del corso di laurea",
-    "materia": "materia standardizzata (es: Biologia, Chimica, Fisica, ecc.)",
-    "classeLaurea": "classe di laurea (es: L-13, LM-6, ecc.)",
-    "bibliografia": [
-      {
-        "titolo": "titolo del libro",
-        "autori": "autori del libro",
-        "editore": "casa editrice",
-        "tipo": "principale o consigliato"
-      }
-    ]
-  }
-]
-
-IMPORTANTE:
-- Restituisci SOLO l'array JSON, senza markdown o altri testi
-- Se un campo non è presente, usa stringa vuota ""
-- La materia deve essere standardizzata (es: "Chimica Organica" diventa "Chimica")
-- Identifica il testo principale come tipo "principale", gli altri come "consigliato"
-- Se ci sono più docenti/insegnamenti, crea elementi separati nell'array`;
-
-    try {
-      console.log('Invio richiesta a OpenAI...');
-
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`,
+    const response = await openaiClient.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: 'Sei un assistente specializzato nell\'analisi di programmi didattici universitari. Rispondi sempre e solo con JSON valido, senza markdown o testo aggiuntivo.'
         },
-        body: JSON.stringify({
-          model: this.model,
-          messages: [
-            {
-              role: 'system',
-              content: 'Sei un assistente specializzato nell\'analisi di programmi universitari. Rispondi SOLO con JSON valido, senza markdown o altri testi.',
-            },
-            {
-              role: 'user',
-              content: prompt,
-            },
-          ],
-          temperature: 0.3,
-          max_tokens: 4000,
-        }),
-      });
-
-      console.log('Risposta ricevuta, status:', response.status);
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error('Errore API OpenAI:', errorData);
-        
-        if (response.status === 401) {
-          throw new Error('API Key OpenAI non valida. Verifica la chiave nelle Impostazioni.');
+        {
+          role: 'user',
+          content: prompt
         }
-        if (response.status === 429) {
-          throw new Error('Limite di richieste raggiunto. Riprova tra qualche minuto.');
-        }
-        throw new Error(`Errore OpenAI (${response.status}): ${errorData.error?.message || 'Errore sconosciuto'}`);
-      }
+      ],
+      temperature: 0.1,
+      max_tokens: 2000
+    });
 
-      const data = await response.json();
-      console.log('Risposta OpenAI completa:', data);
-
-      const content = data.choices[0]?.message?.content || '';
-      console.log('Contenuto estratto:', content);
-
-      // Pulisci il contenuto da eventuali markdown
-      let cleanedContent = content.trim();
-      if (cleanedContent.startsWith('```json')) {
-        cleanedContent = cleanedContent.replace(/```json\n?/g, '').replace(/```\n?/g, '');
-      } else if (cleanedContent.startsWith('```')) {
-        cleanedContent = cleanedContent.replace(/```\n?/g, '');
-      }
-
-      console.log('Contenuto pulito:', cleanedContent);
-
-      const parsed = JSON.parse(cleanedContent);
-      console.log('JSON parsato:', parsed);
-
-      // Assicurati che sia un array
-      const result = Array.isArray(parsed) ? parsed : [parsed];
-      
-      console.log('Risultato finale:', result);
-      return result;
-
-    } catch (error) {
-      console.error('Errore durante l\'analisi OpenAI:', error);
-      
-      if (error instanceof SyntaxError) {
-        throw new Error('Risposta OpenAI non valida. Riprova con un PDF più chiaro.');
-      }
-      
-      throw error;
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      throw new Error('Risposta vuota da OpenAI');
     }
+
+    const cleanedContent = content
+      .replace(/```json\n?/g, '')
+      .replace(/```\n?/g, '')
+      .trim();
+
+    const parsedData = JSON.parse(cleanedContent);
+
+    if (parsedData.testiAdottati && parsedData.testiAdottati.length > 0) {
+      parsedData.testiAdottati[0].isPrincipale = true;
+      parsedData.testiAdottati[0].tipologia = 'principale';
+      
+      parsedData.testiAdottati = parsedData.testiAdottati.map((testo: any, index: number) => ({
+        ...testo,
+        id: `testo_${Date.now()}_${index}`,
+        isPrincipale: index === 0
+      }));
+
+      parsedData.titoloPrincipale = parsedData.testiAdottati[0].id;
+    }
+
+    const adozioneData: AdozioneData = {
+      id: `analisi_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      timestamp: Date.now(),
+      nomeFile: fileName,
+      ...parsedData,
+      statoRevisione: 'da_revisionare'
+    };
+
+    return adozioneData;
+
+  } catch (error) {
+    console.error('Errore analisi OpenAI:', error);
+    if (error instanceof Error) {
+      throw new Error(`Errore nell'analisi: ${error.message}`);
+    }
+    throw new Error('Errore sconosciuto nell\'analisi del PDF');
   }
 }

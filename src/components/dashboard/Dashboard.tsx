@@ -4,7 +4,7 @@ import { FilterPanel } from './FilterPanel';
 import { GroupedAnalysisList } from './GroupedAnalysisList';
 import { useDashboardStore } from '../../stores/dashboard.store';
 import { storageService } from '../../services/storage.service';
-import { groupAnalyses } from '../../services/dashboard.service';
+import { groupAnalyses } from '@/services/dashboard.service';
 import { AdozioneData, AnalisiGroup } from '../../types/adozione.types';
 import { DashboardFilters } from '../../types/dashboard.types';
 import { Download, Upload, Trash2, BarChart3 } from 'lucide-react';
