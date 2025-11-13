@@ -6,7 +6,7 @@ import { FormAnalisi } from './components/analisi/FormAnalisi';
 import { ReviewAnalysis } from './components/analisi/ReviewAnalysis';
 import { SettingsModal } from './components/settings/SettingsModal';
 import { useNavigationStore } from './stores/navigation.store';
-import { useAnalysisStore } from './stores/analysis.store';
+import { useAnalisiStore } from './stores/analisi.store'; // ← CORRETTO
 import { useSettingsStore } from './stores/settings.store';
 import { initializeOpenAI } from './services/openai.service';
 import { storageService } from './services/storage.service';
@@ -21,47 +21,36 @@ function App() {
     addPendingReview, 
     setCurrentReview,
     removePendingReview 
-  } = useAnalysisStore();
+  } = useAnalisiStore(); // ← CORRETTO
+
   const { apiKey } = useSettingsStore();
 
-  // Inizializza OpenAI quando l'API key è disponibile
   useEffect(() => {
     if (apiKey) {
       initializeOpenAI(apiKey);
     }
   }, [apiKey]);
 
-  // Handler quando un'analisi è completata dalla coda
   const handleAnalysisComplete = (analysisId: string) => {
-    // Recupera l'analisi dalla coda
     const queueItem = queueService.getQueue().find(
       item => item.result?.id === analysisId
     );
     
     if (queueItem?.result) {
-      // Aggiungi alle analisi in attesa di revisione
       addPendingReview(queueItem.result);
-      
-      // Passa automaticamente alla vista di revisione
       setView('review');
     }
   };
 
-  // Handler quando la revisione è completata e salvata
   const handleReviewSave = async (reviewedData: AdozioneData) => {
     try {
-      // Salva nel storage
       await storageService.saveAnalysis(reviewedData);
-      
-      // Rimuovi dalle pending reviews
       removePendingReview(reviewedData.id);
       
-      // Se ci sono altre analisi da revisionare, mostra la prossima
       if (pendingReviews.length > 1) {
         const nextReview = pendingReviews.find(a => a.id !== reviewedData.id);
         setCurrentReview(nextReview || null);
       } else {
-        // Altrimenti torna alla dashboard
         setView('dashboard');
       }
     } catch (error) {
@@ -70,16 +59,13 @@ function App() {
     }
   };
 
-  // Handler per scartare un'analisi
   const handleReviewDiscard = (analysisId: string) => {
     removePendingReview(analysisId);
     
-    // Se ci sono altre analisi, mostra la prossima
     if (pendingReviews.length > 1) {
       const nextReview = pendingReviews.find(a => a.id !== analysisId);
       setCurrentReview(nextReview || null);
     } else {
-      // Altrimenti torna alla nuova analisi
       setView('new');
     }
   };
@@ -89,15 +75,12 @@ function App() {
       <Header />
       
       <main className="container mx-auto px-4 py-8">
-        {/* Vista Dashboard */}
         {currentView === 'dashboard' && <Dashboard />}
         
-        {/* Vista Nuova Analisi */}
         {currentView === 'new' && (
           <FormAnalisi onAnalysisComplete={handleAnalysisComplete} />
         )}
         
-        {/* Vista Revisione */}
         {currentView === 'review' && currentReview && (
           <div>
             {pendingReviews.length > 1 && (
@@ -120,7 +103,6 @@ function App() {
           </div>
         )}
         
-        {/* Vista Impostazioni */}
         {currentView === 'settings' && <SettingsModal />}
       </main>
     </div>

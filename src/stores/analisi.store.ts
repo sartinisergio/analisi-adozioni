@@ -1,8 +1,8 @@
-// src/stores/analysis.store.ts
+// src/stores/analisi.store.ts
 import { create } from 'zustand';
 import { AdozioneData } from '../types/adozione.types';
 
-interface AnalysisState {
+interface AnalisiState {
   pendingReviews: AdozioneData[];
   currentReview: AdozioneData | null;
   
@@ -12,26 +12,31 @@ interface AnalysisState {
   clearPendingReviews: () => void;
 }
 
-export const useAnalysisStore = create<AnalysisState>((set) => ({
+export const useAnalisiStore = create<AnalisiState>((set) => ({
   pendingReviews: [],
   currentReview: null,
   
   addPendingReview: (analysis) =>
     set((state) => ({
       pendingReviews: [...state.pendingReviews, analysis],
-      currentReview: state.currentReview || analysis // Se non c'è nessuna review corrente, imposta questa
+      currentReview: state.currentReview || analysis
     })),
   
   setCurrentReview: (analysis) =>
     set({ currentReview: analysis }),
   
   removePendingReview: (analysisId) =>
-    set((state) => ({
-      pendingReviews: state.pendingReviews.filter(a => a.id !== analysisId),
-      currentReview: state.currentReview?.id === analysisId 
-        ? state.pendingReviews[0] || null 
-        : state.currentReview
-    })),
+    set((state) => {
+      const newPendingReviews = state.pendingReviews.filter(a => a.id !== analysisId);
+      const newCurrentReview = state.currentReview?.id === analysisId 
+        ? (newPendingReviews[0] || null)
+        : state.currentReview;
+      
+      return {
+        pendingReviews: newPendingReviews,
+        currentReview: newCurrentReview
+      };
+    }),
   
   clearPendingReviews: () =>
     set({ pendingReviews: [], currentReview: null })
