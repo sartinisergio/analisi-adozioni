@@ -1,32 +1,20 @@
-export type GroupByOption = 'materia' | 'ateneo' | 'corso' | 'docente';
-
+// src/types/dashboard.types.ts
 export interface DashboardFilters {
   ateneo: string;
   classeLaurea: string;
   corso: string;
   materia: string;
   titolo: string;
+  searchText: string;
 }
 
-export interface GroupedData {
-  groupKey: string;
-  groupLabel: string;
-  items: AdozioneAnalizzata[];
-  isExpanded: boolean;
-  page: number;
-}
+export type GroupByOption = 'materia' | 'ateneo' | 'corso' | 'docente';
 
-export interface AdozioneAnalizzata {
-  id: string;
-  ateneo: string;
-  classeLaurea: string;
-  corso: string;
-  docente: string;
-  materia: string;
-  titolo: string;
-  autore: string;
-  editore: string;
-  isZanichelli: boolean;
-  dataAnalisi: Date;
-  pdfFileName: string;
+export interface DashboardStats {
+  totaleAnalisi: number;
+  totaleAtenei: number;
+  totaleMaterie: number;
+  totaleCorsi: number;
+  totaleTitoli: number;
+  titoliZanichelli: number;
 }

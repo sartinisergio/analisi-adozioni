@@ -1,167 +1,230 @@
-import React, { useState } from 'react';
-import { Upload, FileText, Loader2, CheckCircle } from 'lucide-react';
+// src/components/analisi/FormAnalisi.tsx
+import React, { useState, useEffect } from 'react';
+import { Upload, AlertCircle } from 'lucide-react';
 import { Button } from '../ui/Button';
-import { Alert } from '../ui/Alert';
 import { Card } from '../ui/Card';
-import { PDFService } from '../../services/pdf.service';
-import { OpenAIService } from '../../services/openai.service';
-import { StorageService } from '../../services/storage.service';
-import { ReviewAnalysis } from './ReviewAnalysis';
-import type { AdozioneEstesa } from '../../types/adozione.types';
+import { Alert } from '../ui/Alert';
+import { isOpenAIInitialized } from '../../services/openai.service';
+import { queueService } from '../../services/queue.service';
+import { QueueViewer } from './QueueViewer';
+import { QueueItem } from '../../types/adozione.types';
 
-type Step = 'upload' | 'analyzing' | 'review' | 'success';
+interface FormAnalisiProps {
+  onAnalysisComplete: (analysisId: string) => void;
+}
 
-export const FormAnalisi: React.FC = () => {
-  const [currentStep, setCurrentStep] = useState<Step>('upload');
-  const [pdfFile, setPdfFile] = useState<File | null>(null);
-  const [analisiResult, setAnalisiResult] = useState<AdozioneEstesa[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+export const FormAnalisi: React.FC<FormAnalisiProps> = ({ onAnalysisComplete }) => {
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [error, setError] = useState<string>('');
+  const [queue, setQueue] = useState<QueueItem[]>([]);
 
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file && file.type === 'application/pdf') {
-      setPdfFile(file);
-      setError(null);
-    } else {
-      setError('Seleziona un file PDF valido');
-    }
-  };
+  useEffect(() => {
+    // Sottoscrivi agli aggiornamenti della coda
+    const unsubscribe = queueService.subscribe((updatedQueue) => {
+      setQueue(updatedQueue);
+      
+      // Se ci sono analisi completate, notifica il componente padre
+      updatedQueue.forEach(item => {
+        if (item.status === 'completed' && item.result) {
+          onAnalysisComplete(item.result.id);
+        }
+      });
+    });
 
-  const handleAnalyze = async () => {
-    if (!pdfFile) {
-      setError('Seleziona prima un file PDF');
+    return unsubscribe;
+  }, [onAnalysisComplete]);
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    
+    if (files.length === 0) return;
+
+    // Valida che siano tutti PDF
+    const invalidFiles = files.filter(f => f.type !== 'application/pdf');
+    if (invalidFiles.length > 0) {
+      setError(`${invalidFiles.length} file non sono PDF validi`);
       return;
     }
 
-    setCurrentStep('analyzing');
-    setError(null);
+    setSelectedFiles(files);
+    setError('');
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+
+    if (!isOpenAIInitialized()) {
+      setError('Configura la API Key di OpenAI nelle impostazioni prima di procedere');
+      return;
+    }
+
+    if (selectedFiles.length === 0) {
+      setError('Seleziona almeno un file PDF');
+      return;
+    }
 
     try {
-      const pdfService = new PDFService();
-      const text = await pdfService.extractText(pdfFile);
-
-      const openAIService = new OpenAIService();
-      const result = await openAIService.analyzeAdozioni(text);
-
-      setAnalisiResult(result);
-      setCurrentStep('review');
+      // Aggiungi i file alla coda
+      queueService.addToQueue(selectedFiles);
+      
+      // Reset form
+      setSelectedFiles([]);
+      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+      if (fileInput) fileInput.value = '';
+      
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Errore durante l\'analisi');
-      setCurrentStep('upload');
+      setError(err instanceof Error ? err.message : 'Errore durante l\'aggiunta alla coda');
     }
   };
 
-  const handleConfirmAnalysis = (analisiModificate: AdozioneEstesa[]) => {
-    try {
-      console.log('Salvataggio con LocalStorage...');
-      let savedCount = 0;
-      
-      for (const item of analisiModificate) {
-        if (item.bibliografia && item.bibliografia.length > 0) {
-          for (const libro of item.bibliografia) {
-            StorageService.save({
-              ateneo: item.ateneo || '',
-              classeLaurea: item.classeLaurea || '',
-              corso: item.corso || '',
-              docente: item.docente || '',
-              materia: item.materia || '',
-              insegnamento: item.insegnamento || '',
-              titolo: libro.titolo || '',
-              autore: libro.autori || '',
-              editore: libro.editore || '',
-              dataAnalisi: new Date().toISOString(),
-              pdfFileName: pdfFile?.name || '',
-            });
-            savedCount++;
-          }
-        }
-      }
+  const handleRetryFailed = () => {
+    queueService.retryFailed();
+  };
 
-      console.log(`Salvate ${savedCount} adozioni!`);
-      setSuccessMessage(`✓ Salvate ${savedCount} adozioni!`);
-      setCurrentStep('success');
-      
-      setTimeout(() => {
-        setPdfFile(null);
-        setAnalisiResult(null);
-        setCurrentStep('upload');
-        setError(null);
-        setSuccessMessage(null);
-      }, 3000);
-      
-    } catch (error) {
-      console.error('Errore salvataggio:', error);
-      setError('Errore durante il salvataggio');
-    }
+  const handleClearCompleted = () => {
+    queueService.removeCompleted();
   };
 
   return (
     <div className="max-w-4xl mx-auto">
-      {currentStep === 'upload' && (
-        <Card className="p-8">
-          <div className="text-center mb-8">
-            <h2 className="text-3xl font-bold text-gray-800 mb-2">Prepara Analisi Batch</h2>
-            <p className="text-gray-600">Carica un file PDF di programma universitario</p>
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">
+          Nuova Analisi Adozioni
+        </h2>
+        <p className="text-gray-600">
+          Carica uno o più programmi didattici in formato PDF per estrarre automaticamente 
+          le informazioni sulle adozioni librarie
+        </p>
+      </div>
+
+      {!isOpenAIInitialized() && (
+        <Alert variant="warning" className="mb-6">
+          <AlertCircle className="w-4 h-4" />
+          <div>
+            <div className="font-semibold">API Key non configurata</div>
+            <div className="text-sm mt-1">
+              Vai nelle Impostazioni per configurare la tua API Key di OpenAI
+            </div>
           </div>
+        </Alert>
+      )}
 
-          {error && <Alert variant="error" className="mb-6">{error}</Alert>}
+      {error && (
+        <Alert variant="error" className="mb-6">
+          <AlertCircle className="w-4 h-4" />
+          <div>{error}</div>
+        </Alert>
+      )}
 
-          <div className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center">
-            <Upload className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-gray-700 mb-2">Carica File PDF</h3>
-            
-            <input
-              type="file"
-              accept=".pdf"
-              onChange={handleFileSelect}
-              className="hidden"
-              id="pdf-upload"
-            />
-            
-            <label htmlFor="pdf-upload">
-              <Button as="span" className="cursor-pointer">Seleziona File PDF</Button>
-            </label>
+      {/* Visualizzatore Coda */}
+      <QueueViewer
+        queue={queue}
+        onRetryFailed={handleRetryFailed}
+        onClearCompleted={handleClearCompleted}
+      />
 
-            {pdfFile && (
-              <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-                <FileText className="w-5 h-5 text-blue-600 inline mr-2" />
-                <span className="text-blue-800 font-medium">{pdfFile.name}</span>
+      {/* Form Upload */}
+      <Card>
+        <form onSubmit={handleSubmit} className="p-6">
+          <div className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Seleziona File PDF
+              </label>
+              <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-lg hover:border-blue-400 transition-colors">
+                <div className="space-y-1 text-center">
+                  <Upload className="mx-auto h-12 w-12 text-gray-400" />
+                  <div className="flex text-sm text-gray-600">
+                    <label
+                      htmlFor="file-upload"
+                      className="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none"
+                    >
+                      <span>Carica file</span>
+                      <input
+                        id="file-upload"
+                        name="file-upload"
+                        type="file"
+                        accept=".pdf"
+                        multiple
+                        className="sr-only"
+                        onChange={handleFileSelect}
+                        disabled={!isOpenAIInitialized()}
+                      />
+                    </label>
+                    <p className="pl-1">o trascina qui</p>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    PDF fino a 10MB ciascuno (puoi selezionare più file)
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {selectedFiles.length > 0 && (
+              <div className="bg-blue-50 rounded-lg p-4">
+                <h4 className="font-medium text-blue-900 mb-2">
+                  File selezionati: {selectedFiles.length}
+                </h4>
+                <ul className="space-y-1">
+                  {selectedFiles.map((file, index) => (
+                    <li key={index} className="text-sm text-blue-700 flex items-center gap-2">
+                      <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                      {file.name} ({(file.size / 1024 / 1024).toFixed(2)} MB)
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
-          </div>
 
-          {pdfFile && (
-            <div className="mt-6 flex justify-center">
-              <Button onClick={handleAnalyze} size="lg">Avvia Analisi</Button>
+            <div className="flex gap-3">
+              <Button
+                type="submit"
+                disabled={!isOpenAIInitialized() || selectedFiles.length === 0}
+                className="flex-1"
+              >
+                Avvia Analisi ({selectedFiles.length} file)
+              </Button>
+              
+              {selectedFiles.length > 0 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setSelectedFiles([]);
+                    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+                    if (fileInput) fileInput.value = '';
+                  }}
+                >
+                  Cancella
+                </Button>
+              )}
             </div>
-          )}
-        </Card>
-      )}
+          </div>
+        </form>
+      </Card>
 
-      {currentStep === 'analyzing' && (
-        <Card className="p-12 text-center">
-          <Loader2 className="w-16 h-16 text-blue-600 animate-spin mx-auto mb-4" />
-          <h3 className="text-2xl font-bold text-gray-800 mb-2">Analisi in corso...</h3>
-          <p className="text-gray-600">Elaborazione con AI in corso...</p>
-        </Card>
-      )}
-
-      {currentStep === 'review' && analisiResult && (
-        <ReviewAnalysis
-          analisi={analisiResult}
-          onConfirm={handleConfirmAnalysis}
-          onBack={() => setCurrentStep('upload')}
-        />
-      )}
-
-      {currentStep === 'success' && (
-        <Card className="p-12 text-center">
-          <CheckCircle className="w-16 h-16 text-green-600 mx-auto mb-4" />
-          <h3 className="text-2xl font-bold text-gray-800 mb-2">Completato!</h3>
-          <p className="text-gray-600">{successMessage}</p>
-        </Card>
-      )}
+      <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <h3 className="font-semibold text-blue-900 mb-2">Come funziona:</h3>
+        <ol className="space-y-2 text-sm text-blue-800">
+          <li className="flex gap-2">
+            <span className="font-semibold">1.</span>
+            <span>Seleziona uno o più programmi didattici in formato PDF</span>
+          </li>
+          <li className="flex gap-2">
+            <span className="font-semibold">2.</span>
+            <span>I file verranno elaborati in sequenza automaticamente</span>
+          </li>
+          <li className="flex gap-2">
+            <span className="font-semibold">3.</span>
+            <span>Potrai revisionare ogni analisi completata prima di salvarla</span>
+          </li>
+          <li className="flex gap-2">
+            <span className="font-semibold">4.</span>
+            <span>I dati verranno aggregati nella Dashboard per materia/ateneo/corso</span>
+          </li>
+        </ol>
+      </div>
     </div>
   );
 };
