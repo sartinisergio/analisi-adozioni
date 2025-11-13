@@ -1,0 +1,70 @@
+PROGETTO: Zanichelli Adozioni Analyzer
+PERCORSO: C:\Users\SARTINI\Desktop\analisi-adozioni
+SISTEMA: Windows
+
+STACK TECNOLOGICO:
+- React 18 + TypeScript
+- Vite (build tool)
+- Tailwind CSS
+- OpenAI API (gpt-4o-mini)
+- Dexie (IndexedDB per database locale)
+- Zustand (state management)
+- pdfjs-dist (lettura PDF)
+- lucide-react (icone)
+
+STRUTTURA CARTELLE ESISTENTE:
+src/
+├── components/
+│   ├── ui/ (Alert, Button, Card, Input)
+│   ├── analisi/ (FormAnalisi, AnalysisQueue, BatchProcessor, ReviewAnalysis)
+│   ├── dashboard/ (Dashboard, FilterPanel, AnalysisRow, GroupedAnalysisList)
+│   ├── settings/ (SettingsModal)
+│   └── Header.tsx
+├── services/
+│   ├── database.service.ts (Dexie - tabella 'cronologia')
+│   ├── openai.service.ts
+│   └── pdf.service.ts (classe PDFService)
+├── stores/
+│   ├── analisi.store.ts
+│   ├── queue.store.ts
+│   └── settings.store.ts
+├── types/
+│   ├── adozione.types.ts
+│   ├── filter.types.ts
+│   └── queue.types.ts
+├── hooks/
+│   └── useAnalysisFilters.ts
+├── App.tsx
+└── main.tsx
+
+PROBLEMA ATTUALE:
+- L'interfaccia si carica visivamente
+- Il pulsante "Seleziona File PDF" funziona
+- I pulsanti Header (Dashboard, Nuova Analisi, Impostazioni) NON rispondono ai click
+- Console browser senza errori
+- Database IndexedDB: nome 'ZanichelliAdozioniDB', tabella 'cronologia'
+
+OBIETTIVO:
+1. Far funzionare la navigazione (pulsanti Header)
+2. Completare Dashboard con filtri avanzati e raggruppamento
+3. Implementare Export/Import JSON
+4. Sistema di analisi batch funzionante
+
+FUNZIONALITÀ DESIDERATE (FASE 2):
+- Dashboard con filtri: Ateneo, Classe Laurea, Corso, Materia, Titolo
+- Raggruppamento dinamico per: Materia (default), Ateneo, Corso, Docente
+- Visualizzazione compatta: "Ateneo / Classe / Corso / Docente / Titolo (Autore - Editore)"
+- Badge evidenziato per libri Zanichelli
+- Gruppi espandibili (20 alla volta con paginazione)
+- Export/Import JSON con scelta sovrascrivi/aggiungi
+
+Ho bisogno di sistemare l'applicazione partendo dai file esistenti.
+
+PRIORITÀ:
+1. Far funzionare i pulsanti di navigazione Header
+2. Verificare che App.tsx gestisca correttamente il routing
+3. Fornirmi i file completi e corretti (non modifiche frammentarie)
+
+Procediamo passo-passo con file completi da sostituire.
+Prima di darmi qualsiasi file, dimmi quale file vuoi vedere 
+per capire lo stato attuale.
